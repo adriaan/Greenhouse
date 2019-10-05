@@ -1,6 +1,8 @@
 
 #include "DHT.h"
 
+// PIN definitions
+
 // LED configuration
 #define normalOperationLEDPin 3
 #define forceMistingLEDPin 4
@@ -9,6 +11,24 @@
 
 // Push button configuration
 #define buttonPin 9
+
+#define soilMeasurePin A0 // Analog pin connected to the sensor's signal outptu
+// Rather than powering the sensor through the 3.3V or 5V pins, 
+// we'll use a digital pin to power the sensor. This will 
+// prevent corrosion of the sensor as it sits in the soil. 
+// Variable for soil moisture power pin
+#define soilPowerPin 7
+
+// Relay configuration
+#define relaySignalPin 8 // Variable for pump relay signal pin
+
+
+// Temperature / Humidity sensor configuration
+#define DHTPIN 11     // Digital pin connected to the DHT sensor
+#define DHTPowerPin 10  // Digital pin to power the DHT sensor
+#define DHTTYPE DHT22   // DHT 22  (AM2302), AM2321
+// Initialize DHT sensor.
+DHT dht(DHTPIN, DHTTYPE);
 
 // Push button vaiables
 
@@ -20,23 +40,6 @@ int operationMode = 0;
 int buttonState = 0;         // current state of the button
 int lastButtonState = 0;     // previous state of the button
 
-// Temperature / Humidity sensor configuration
-#define DHTPIN 2     // Digital pin connected to the DHT sensor
-#define DHTTYPE DHT22   // DHT 22  (AM2302), AM2321
-// Initialize DHT sensor.
-DHT dht(DHTPIN, DHTTYPE);
-
-// Soil moisture sensor configuration
-
-#define soilMeasurePin A0 // Analog pin connected to the sensor's signal outptu
-// Rather than powering the sensor through the 3.3V or 5V pins, 
-// we'll use a digital pin to power the sensor. This will 
-// prevent corrosion of the sensor as it sits in the soil. 
-// Variable for soil moisture power pin
-#define soilPowerPin 7
-
-// Relay configuration
-#define relaySignalPin 8 // Variable for pump relay signal pin
 
 // Variable definitions temp / humidity
 
@@ -77,12 +80,15 @@ void setup()
 {
   Serial.begin(9600); // open serial over USB
 
-  pinMode(soilPowerPin, OUTPUT); // Set D7 as an OUTPUT
+  pinMode(soilPowerPin, OUTPUT); 
   digitalWrite(soilPowerPin, LOW); // Set to LOW so no power is flowing through the sensor
 
-  pinMode(relaySignalPin, OUTPUT); // Set D8 as an OUTPUT
+  pinMode(relaySignalPin, OUTPUT); 
   digitalWrite(relaySignalPin, LOW); // Set to LOW so relay is switched OFF
 
+  pinMode(DHTPowerPin, OUTPUT);
+  digitalWrite(DHTPowerPin, LOW); // Set to LOW so no power is flowing through the sensor
+  
   pinMode(buttonPin, INPUT);
   
   // Configure LEDs
@@ -131,12 +137,16 @@ void tempHumidityLoop(unsigned long currentMillis) {
 }
 
 void measureTemperatureAndHumidity() {
+  // Power-up the sensor
+  digitalWrite(DHTPowerPin, HIGH); // turn power to sensor ON
+  delay(1000); // sensor needs a second to get ready 
   // Reading temperature or humidity takes about 250 milliseconds!
   // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
   float h = dht.readHumidity();
   // Read temperature as Celsius (the default)
   float t = dht.readTemperature();
 
+   digitalWrite(DHTPowerPin, LOW);  // Turn power to sensor OFF
   // Check if any reads failed and exit early (to try again).
   if (isnan(h) || isnan(t)){
     Serial.println(F("Failed to read from DHT sensor!"));
