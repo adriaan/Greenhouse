@@ -1,31 +1,33 @@
+// TODO
+// - add LoRa code
+
 
 #include "DHT.h"
 
 // PIN definitions
+// Dragino LoRa shield uses all pins except 3/4/5 and A0/A1/A2/A3/A4/A5
+// https://wiki.dragino.com/index.php?title=Lora_Shield
 
 // LED configuration
-#define normalOperationLEDPin 3
-#define forceMistingLEDPin 4
-#define stopMistingLEDPin 5
-#define soilSensorErrorLEDPin 6
+#define normalOperationLEDPin A1
+#define forceMistingLEDPin A2
+#define stopMistingLEDPin A3
+#define soilSensorErrorLEDPin A4
 
 // Push button configuration
-#define buttonPin 9
+#define buttonPin A5
 
 #define soilMeasurePin A0 // Analog pin connected to the sensor's signal outptu
-// Rather than powering the sensor through the 3.3V or 5V pins, 
-// we'll use a digital pin to power the sensor. This will 
-// prevent corrosion of the sensor as it sits in the soil. 
-// Variable for soil moisture power pin
-#define soilPowerPin 7
+// Rather than powering the sensors through the 3.3V or 5V pins, 
+// we'll use a digital pin to power the sensors. 
+// This is more energy efficient and will prevent corrosion of the sensor as it sits in the soil. 
+#define sensorPowerPin 3
 
 // Relay configuration
-#define relaySignalPin 8 // Variable for pump relay signal pin
-
+#define relaySignalPin 4 // Variable for pump relay signal pin
 
 // Temperature / Humidity sensor configuration
-#define DHTPIN 11     // Digital pin connected to the DHT sensor
-#define DHTPowerPin 10  // Digital pin to power the DHT sensor
+#define DHTPIN 5     // Digital pin connected to the DHT sensor
 #define DHTTYPE DHT22   // DHT 22  (AM2302), AM2321
 // Initialize DHT sensor.
 DHT dht(DHTPIN, DHTTYPE);
@@ -43,17 +45,13 @@ int lastButtonState = 0;     // previous state of the button
 
 // Variable definitions temp / humidity
 
-// Interval between temperature measurements in milliseconds
-unsigned long tempMeasurementInterval = 60000;
-unsigned long lastTemperatureMeasurementMillis = 0;
-
 // Variable definitions misting
 int soilMoisture = 0; // Value for storing moisture measurement 
 
-// Interval between soil mouisture measurements in milliseconds
-unsigned long soilMeasurementInterval = 600000;
+// Interval between sensor measurements in milliseconds
+unsigned long measurementInterval = 600000;
 
-// Interval between mistings when sensor is nor working in milliseconds
+// Interval between mistings when sensor is not working in milliseconds
 unsigned long sensorlessWaitingInterval = 43200000; // 12 hours
 
 // Interval the pump will run for in milliseconds
@@ -80,15 +78,12 @@ void setup()
 {
   Serial.begin(9600); // open serial over USB
 
-  pinMode(soilPowerPin, OUTPUT); 
-  digitalWrite(soilPowerPin, LOW); // Set to LOW so no power is flowing through the sensor
+  pinMode(sensorPowerPin, OUTPUT); 
+  digitalWrite(sensorPowerPin, LOW); // Set to LOW so no power is flowing through the sensor
 
   pinMode(relaySignalPin, OUTPUT); 
   digitalWrite(relaySignalPin, LOW); // Set to LOW so relay is switched OFF
 
-  pinMode(DHTPowerPin, OUTPUT);
-  digitalWrite(DHTPowerPin, LOW); // Set to LOW so no power is flowing through the sensor
-  
   pinMode(buttonPin, INPUT);
   
   // Configure LEDs
@@ -115,56 +110,17 @@ void loop()
     reset();
   }
   mistingLoop(currentMillis);
-  tempHumidityLoop(currentMillis);
   readButtonState(currentMillis);
 }
 
 void reset() {
   mistingStartMillis = 0;
   waitingPeriodStartMillis = 0;
-  lastTemperatureMeasurementMillis = 0;
   isWaiting = false;
   isMisting = false;
 }
 
-// Temp / Humidity code
 
-void tempHumidityLoop(unsigned long currentMillis) {
-  if (currentMillis > lastTemperatureMeasurementMillis + tempMeasurementInterval || lastTemperatureMeasurementMillis == 0) {
-    measureTemperatureAndHumidity();
-    lastTemperatureMeasurementMillis = currentMillis;
-  }
-}
-
-void measureTemperatureAndHumidity() {
-  // Power-up the sensor
-  digitalWrite(DHTPowerPin, HIGH); // turn power to sensor ON
-  delay(1000); // sensor needs a second to get ready 
-  // Reading temperature or humidity takes about 250 milliseconds!
-  // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
-  float h = dht.readHumidity();
-  // Read temperature as Celsius (the default)
-  float t = dht.readTemperature();
-
-   digitalWrite(DHTPowerPin, LOW);  // Turn power to sensor OFF
-  // Check if any reads failed and exit early (to try again).
-  if (isnan(h) || isnan(t)){
-    Serial.println(F("Failed to read from DHT sensor!"));
-    return;
-  }
-
-  // Compute heat index in Celsius (isFahreheit = false)
-  float hic = dht.computeHeatIndex(t, h, false);
-
-  Serial.print(F("Humidity: "));
-  Serial.print(h);
-  Serial.print(F("%  Temperature: "));
-  Serial.print(t);
-  Serial.print(F("°C "));
-  Serial.print(F("Heat index: "));
-  Serial.print(hic);
-  Serial.println(F("°C "));
-}
 
 // Operation mode code
 
@@ -222,6 +178,7 @@ void mistingLoop(unsigned long currentMillis) {
    // Only execture misting loop if we are in normal operation mode
    if (operationMode != 0){ return; }
    if (isWaiting == false && isMisting == false) {
+     measureTemperatureAndHumidity();
      soilMoisture = readSoil();
      if (soilMoisture <= soilMoistureSensorErrorThreshold) {
         soilSensingFailed = true;
@@ -240,7 +197,7 @@ void mistingLoop(unsigned long currentMillis) {
      }
      updateErrorLED();
   } else if (isWaiting == true) {
-    if (currentMillis > waitingPeriodStartMillis + soilMeasurementInterval) {
+    if (currentMillis > waitingPeriodStartMillis + measurementInterval) {
         stopWaiting();
     }
   } else if (isMisting == true) {
@@ -283,13 +240,47 @@ void stopPump()
   digitalWrite(relaySignalPin, LOW);  // turn relay OFF
 }
 
+// Sensor readings code
+
+// Function for measuring temperature and humidity
+void measureTemperatureAndHumidity() {
+  // Power-up the sensor
+  digitalWrite(sensorPowerPin, HIGH); // turn power to sensor ON
+  delay(1000); // sensor needs a second to get ready 
+  // Reading temperature or humidity takes about 250 milliseconds!
+  // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
+  float h = dht.readHumidity();
+  // Read temperature as Celsius (the default)
+  float t = dht.readTemperature();
+
+   digitalWrite(sensorPowerPin, LOW);  // Turn power to sensor OFF
+  // Check if any reads failed and exit early (to try again).
+  if (isnan(h) || isnan(t)){
+    Serial.println(F("Failed to read from DHT sensor!"));
+    return;
+  }
+
+  // Compute heat index in Celsius (isFahreheit = false)
+  float hic = dht.computeHeatIndex(t, h, false);
+
+  Serial.print(F("Humidity: "));
+  Serial.print(h);
+  Serial.print(F("%  Temperature: "));
+  Serial.print(t);
+  Serial.print(F("°C "));
+  Serial.print(F("Heat index: "));
+  Serial.print(hic);
+  Serial.println(F("°C "));
+}
+
+
 // Function used to get the soil moisture content
 int readSoil()
 {
-  digitalWrite(soilPowerPin, HIGH); // turn power to sensor ON
+  digitalWrite(sensorPowerPin, HIGH); // turn power to sensor ON
   delay(10); // wait 10 milliseconds 
   int val = analogRead(soilMeasurePin); // Read the SIG value form sensor 
-  digitalWrite(soilPowerPin, LOW);  // Turn power to sensor OFF
+  digitalWrite(sensorPowerPin, LOW);  // Turn power to sensor OFF
   Serial.print("Soil Moisture = ");
   Serial.println(val);
   return val; // Send current moisture value
