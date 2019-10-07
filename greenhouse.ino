@@ -44,7 +44,7 @@ int lastButtonState = 0;     // previous state of the button
 // Variable definitions temp / humidity
 
 // Interval between temperature measurements in milliseconds
-unsigned long tempMeasurementInterval = 6000;
+unsigned long tempMeasurementInterval = 60000;
 unsigned long lastTemperatureMeasurementMillis = 0;
 
 // Variable definitions misting
