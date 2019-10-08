@@ -46,7 +46,6 @@ void os_getArtEui (u1_t* buf) { }
 void os_getDevEui (u1_t* buf) { }
 void os_getDevKey (u1_t* buf) { }
 
-static uint8_t mydata[] = "Hello, world!";
 static osjob_t sendjob;
 
 // Schedule TX every this many seconds (might become longer due to duty
@@ -151,7 +150,7 @@ void do_send(osjob_t* j){
         Serial.println(F("OP_TXRXPEND, not sending"));
     } else {
         // Prepare upstream data transmission at the next possible time.
-        LMIC_setTxData2(1, mydata, sizeof(mydata)-1, 0);
+        LMIC_setTxData2(1, payload, sizeof(payload)-1, 0);
         Serial.println(F("Packet queued"));
         Serial.print(F("Sending packet on frequency: "));
         Serial.println(LMIC.freq);
@@ -232,6 +231,11 @@ unsigned long waitingPeriodStartMillis = 0;
 bool isMisting = false;
 bool isWaiting = false;
 bool soilSensingFailed = false;
+
+// LoRa payload
+
+static uint8_t payload[6]
+
 
 void setup() 
 {
@@ -507,9 +511,9 @@ void measureTemperatureAndHumidity() {
   delay(1000); // sensor needs a second to get ready 
   // Reading temperature or humidity takes about 250 milliseconds!
   // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
-  float h = dht.readHumidity();
+  float rHumidity = dht.readHumidity();
   // Read temperature as Celsius (the default)
-  float t = dht.readTemperature();
+  float temperature = dht.readTemperature();
 
    digitalWrite(sensorPowerPin, LOW);  // Turn power to sensor OFF
   // Check if any reads failed and exit early (to try again).
@@ -518,17 +522,34 @@ void measureTemperatureAndHumidity() {
     return;
   }
 
-  // Compute heat index in Celsius (isFahreheit = false)
-  float hic = dht.computeHeatIndex(t, h, false);
-
   Serial.print(F("Humidity: "));
-  Serial.print(h);
+  Serial.print(rHumidity);
   Serial.print(F("%  Temperature: "));
-  Serial.print(t);
+  Serial.print(temperature);
   Serial.print(F("°C "));
-  Serial.print(F("Heat index: "));
-  Serial.print(hic);
-  Serial.println(F("°C "));
+
+  // Put temp and humidity in payload
+  // adjust for the f2sflt16 range (-1 to 1)
+  temperature = temperature / 100;
+  rHumidity = rHumidity / 100;
+        
+  // float -> int
+  // note: this uses the sflt16 datum (https://github.com/mcci-catena/arduino-lmic#sflt16)
+  uint16_t payloadTemp = LMIC_f2sflt16(temperature);
+  // int -> bytes
+  byte tempLow = lowByte(payloadTemp);
+  byte tempHigh = highByte(payloadTemp);
+  // place the bytes into the payload
+  payload[0] = tempLow;
+  payload[1] = tempHigh;
+
+  // float -> int
+  uint16_t payloadHumid = LMIC_f2sflt16(rHumidity);
+  // int -> bytes
+  byte humidLow = lowByte(payloadHumid);
+  byte humidHigh = highByte(payloadHumid);
+  payload[2] = humidLow;
+  payload[3] = humidHigh;
 }
 
 
@@ -541,5 +562,10 @@ int readSoil()
   digitalWrite(sensorPowerPin, LOW);  // Turn power to sensor OFF
   Serial.print("Soil Moisture = ");
   Serial.println(val);
+
+  //put moisture reading in payload
+  payload[4] = highByte(val);
+  payload[5] = lowByte(val);
+  
   return val; // Send current moisture value
 }
