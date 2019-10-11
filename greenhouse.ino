@@ -1,9 +1,3 @@
-// TODO
-// - add LoRa code
-// - not sure exactly how all LoRa code works, start by just merging the sample code with this sketch and see if works...
-// - design and implement LoRa payload
-// - send payload
-
 #include <lmic.h>
 #include <hal/hal.h>
 #include <SPI.h>
@@ -13,20 +7,9 @@
 // LoRa Code //
 // --------- //
 
+// LoRa payload
 
-//
-// For normal use, we require that you edit the sketch to replace FILLMEIN
-// with values assigned by the TTN console. However, for regression tests,
-// we want to be able to compile these scripts. The regression tests define
-// COMPILE_REGRESSION_TEST, and in that case we define FILLMEIN to a non-
-// working but innocuous value.
-//
-#ifdef COMPILE_REGRESSION_TEST
-# define FILLMEIN 0
-#else
-# warning "You must replace the values marked FILLMEIN with real values from the TTN control panel!"
-# define FILLMEIN (#dont edit this, edit the lines that use FILLMEIN)
-#endif
+static uint8_t payload[6];
 
 // LoRaWAN NwkSKey, network session key
 static const PROGMEM u1_t NWKSKEY[16] = { 0x43, 0xFB, 0xCC, 0x13, 0x7D, 0x23, 0x16, 0xF1, 0xB2, 0x24, 0x6A, 0x28, 0x93, 0x90, 0x2F, 0xE5 };
@@ -232,17 +215,11 @@ bool isMisting = false;
 bool isWaiting = false;
 bool soilSensingFailed = false;
 
-// LoRa payload
-
-static uint8_t payload[6]
-
-
 void setup() 
 {
   // ---------- //
   // LoRa setup //
   // ---------- //
-      while (!Serial); // wait for Serial to be initialized
     Serial.begin(115200);
     delay(100);     // per sample code on RF_95 test
     Serial.println(F("Starting"));
@@ -308,6 +285,9 @@ void setup()
     Serial.println(F("Loading AU915/AU921 Configuration..."));
     // Set to AU915 sub-band 2
     LMIC_selectSubBand(1); 
+    #elif defined(CFG_as923)
+    Serial.println(F("Loading AS923 Configuration..."));
+    // Set to AS923 sub-band 2
     #endif
 
     // Disable link check validation
@@ -517,7 +497,7 @@ void measureTemperatureAndHumidity() {
 
    digitalWrite(sensorPowerPin, LOW);  // Turn power to sensor OFF
   // Check if any reads failed and exit early (to try again).
-  if (isnan(h) || isnan(t)){
+  if (isnan(rHumidity) || isnan(temperature)){
     Serial.println(F("Failed to read from DHT sensor!"));
     return;
   }
