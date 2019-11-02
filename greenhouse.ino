@@ -32,7 +32,7 @@ static osjob_t sendjob;
 
 // Schedule TX every this many seconds (might become longer due to duty
 // cycle limitations).
-const unsigned TX_INTERVAL = 60;
+const unsigned TX_INTERVAL = 300;
 
 // Pin mapping
 const lmic_pinmap lmic_pins = {
@@ -212,20 +212,20 @@ int lastButtonState = 0;     // previous state of the button
 int soilMoisture = 0; // Value for storing moisture measurement 
 
 // Interval between sensor measurements in milliseconds
-unsigned long measurementInterval = 60000;
+unsigned long measurementInterval = 60000; // 1 minute
 
 // Interval between mistings when sensor is not working in milliseconds
 unsigned long sensorlessWaitingInterval = 43200000; // 12 hours
 
 // Interval the pump will run for in milliseconds
-unsigned long mistingInterval = 120000;
+unsigned long mistingInterval = 120000; // 2 minutes
 
 // If this threshold is reached, we conclude the moisture sensor is not in soil. 
 // In this case we will switch to initermittent misting at fixed intervals
-int soilMoistureSensorOutOfSoilThreshold = 0;
+int soilMoistureSensorOutOfSoilThreshold = 5;
 
 // Threshold value for soil moisture, if soil moisture levels drop below this, we will mist.
-int soilMoistureMistingThreshold = 200; 
+int soilMoistureMistingThreshold = 470; 
 // Threshold value for soil moisture, if soil moisture levels drop below this, we assume sensor has been removed from soil or is broken
 // In that case we switch to misting on fixed schedule
 int soilMoistureSensorErrorThreshold = 1;
@@ -258,8 +258,7 @@ void setup()
     // Reset the MAC state. Session and pending data transfers will be discarded.
     LMIC_reset();
 
-    // Start job (sending automatically starts OTAA too)
-    do_send(&sendjob);
+    
 
     // ---------------- //
     // Greenhouse setup //
@@ -288,6 +287,9 @@ void setup()
   digitalWrite(soilSensorErrorLEDPin, LOW); // Default is normal operation
 
   dht.begin();
+
+  // Start job (sending automatically starts OTAA too)
+    do_send(&sendjob);
 }
 
 void loop() 
@@ -376,12 +378,19 @@ void resetLEDs() {
 // Misting code
 
 void mistingLoop(unsigned long currentMillis) {
-   // Only execture misting loop if we are in normal operation mode
-   if (operationMode != 0){ return; }
    if (isWaiting == false && isMisting == false) {
      measureTemperatureAndHumidity();
      soilMoisture = readSoil();
-     if (soilMoisture <= soilMoistureSensorErrorThreshold) {
+     if (operationMode != 0){ 
+        // if not in normal operation, only take sensor values and get back to waiting
+        // don't make aby misting decisions
+        if (soilMoisture <= soilMoistureSensorErrorThreshold) {
+          soilSensingFailed = true;
+        } else {
+          soilSensingFailed = false;
+        }
+        startWaiting(currentMillis);
+     } else if (soilMoisture <= soilMoistureSensorErrorThreshold) {
         soilSensingFailed = true;
         // If we can't get a proper reading from the soil sensor, mist according to the fixed schedule
         if (currentMillis > mistingStartMillis + sensorlessWaitingInterval) {
@@ -468,27 +477,20 @@ void measureTemperatureAndHumidity() {
   Serial.print(F("°C "));
 
   // Put temp and humidity in payload
-  // adjust for the f2sflt16 range (-1 to 1)
-  temperature = temperature / 100;
-  rHumidity = rHumidity / 100;
+  // convert to int, then encode into 2 bytes
+  int integerTemperature = round(temperature * 100);
+  int integerRHumidity = round(rHumidity * 100);
         
-  // float -> int
-  // note: this uses the sflt16 datum (https://github.com/mcci-catena/arduino-lmic#sflt16)
-  uint16_t payloadTemp = LMIC_f2sflt16(temperature);
-  // int -> bytes
-  byte tempLow = lowByte(payloadTemp);
-  byte tempHigh = highByte(payloadTemp);
+  byte tempLow = lowByte(integerTemperature);
+  byte tempHigh = highByte(integerTemperature);
   // place the bytes into the payload
-  payload[0] = tempLow;
-  payload[1] = tempHigh;
+  payload[0] = tempHigh;
+  payload[1] = tempLow;
 
-  // float -> int
-  uint16_t payloadHumid = LMIC_f2sflt16(rHumidity);
-  // int -> bytes
-  byte humidLow = lowByte(payloadHumid);
-  byte humidHigh = highByte(payloadHumid);
-  payload[2] = humidLow;
-  payload[3] = humidHigh;
+  byte humidLow = lowByte(integerRHumidity);
+  byte humidHigh = highByte(integerRHumidity);
+  payload[2] = humidHigh;
+  payload[3] = humidLow;
 }
 
 
